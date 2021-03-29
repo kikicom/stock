@@ -1,44 +1,42 @@
 import pandas as pd
-from bs4 import BeautifulSoup
 import urllib, calendar, time, json
 from datetime import datetime
 from urllib.request import urlopen
 from threading import Timer
 import pymysql
+from urllib import request as req
+from bs4 import BeautifulSoup as bs
+import requests
 
 class DBUpdater:
     def __init__(self):
         """생성자 : MariaDB 연결 및 종목코드 딕셔너리 생성"""
-        self.conn = pymysql.connect(host='localhost', user='root', password='3636', db='stock', charset='utf8')
-
+        self.conn = pymysql.connect(host='localhost', user='root', passwd='3636', db='stock', charset='utf8')
         with self.conn.cursor() as curs:
             sql = """
-                CREATE TABLE IF NOT EXISTS TB_COMPANY_INFO(
-                    CODE VARCHAR(20),
-                    COMPANY	VARCHAR(40),
-                    REG_DTM DATE,
-                    UPD_DTM DATE,
-                    PRIMARY KEY (CODE)
+                CREATE TABLE IF NOT EXISTS tb_company_info(
+                    code VARCHAR(20),
+                    company	VARCHAR(40),
+                    last_update DATE,
+                    PRIMARY KEY (code)
                 )
-                
             """
             curs.execute(sql)
             sql = """
-                CREATE TABLE IF NOT EXISTS TB_DAILY_PRICE(
-                    CODE VARCHAR(20),
-                    DATE DATE,
-                    STRT_PRICE BIGINT(20),
-                    HIGH_PRICE BIGINT(20),
-                    LOW_PRICE BIGINT(20),
-                    END_PRICE  BIGINT(20),
-                    DIFF BIGINT(20),
-                    VOLUME BIGINT(20),
-                    PRIMARY KEY (CODE, DATE)
+                CREATE TABLE IF NOT EXISTS tb_daily_price(
+                    code VARCHAR(20),
+                    date DATE,
+                    open BIGINT(20),
+                    high BIGINT(20),
+                    low BIGINT(20),
+                    close  BIGINT(20),
+                    diff BIGINT(20),
+                    volume BIGINT(20),
+                    PRIMARY KEY (code, date)
                 )
             """
             curs.execute(sql)
         self.conn.commit()
-
         self.codes = dict()
         self.update_comp_info()
 
@@ -76,29 +74,39 @@ class DBUpdater:
                     curs.execute(sql)
                     self.codes[code] = company
                     tmnow = datetime.now().strftime('%Y-%m-%d')
-                    print(f"[{tmnow}]{idx:04d} REPLACE INTO tb_company_info VALUES ({code},{company},{today})")
-                self.conn.commit()
-                print('')
 
+                self.conn.commit()
 
     def read_naver(self, code, company, pages_to_fetch):
         """네이버 금융에서 주식 시세를 읽어서 데이터프레임으로 반환"""
         try:
+            '''
+            headers=('User-Aqent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppliWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36')
+            '''
+
             url = f"http://finance.naver.com/item/sise_day.nhn?code={code}"
-            with urlopen(url) as doc:
+            hdr = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'}
+            request = urllib.request.Request(url, headers=hdr)
+
+            with urlopen(request) as doc:
                 if doc is None:
                     return None
-                html = BeautifulSoup(doc, 'lxml')
-                pgrr = html.find("td", class_="pgRR")
+                html = bs(doc.read(), "html.parser")
+                pgrr = html.find('td', class_='pgRR')
                 if pgrr is None:
                     return None
                 s = str(pgrr.a["href"]).split('=')
                 lastpage = s[-1]
             df = pd.DataFrame()
             pages = min(int(lastpage), pages_to_fetch)
+
             for page in range(1, pages + 1):
                 pg_url = '{}&page={}'.format(url, page)
-                df = df.append(pd.read_html(pg_url, header=0)[0])
+                pHtml = urllib.request.Request(pg_url, headers=hdr)
+                doc = urlopen(pHtml)
+                html = bs(doc.read(), "html.parser")
+                table = html.find_all('table')[0]
+                df = pd.read_html(str(table), header=0)[0]
                 tmnow = datetime.now().strftime('%Y-%m-%d %H:%M')
                 print('[{}] {} ({}) : {:04d}/{:04d} pages are downloading ...'.format(tmnow, company, code, page, pages), end="\r")
             df =df.rename(columns={'날짜':'date','종가':'close','전일비':'diff','시가':'open','고가':'high','저가':'low','거래량':'volume'})
@@ -115,10 +123,10 @@ class DBUpdater:
         """네이버 금융에서 읽어온 주식 시세를 DB에 REPLACE"""
         with self.conn.cursor() as curs:
             for r in df.itertuples():
-                sql = "REPLACE INTO tb_daily_price VALUES ('{}','{}',{},{},{},{},{},{}".format(code, r.date, r.open, r.high, r.low, r.close, r.diff, r.volume)
+                sql = "REPLACE INTO tb_daily_price VALUES ('{}','{}',{},{},{},{},{},{})".format(code, r.date, r.open, r.high, r.low, r.close, r.diff, r.volume)
                 curs.execute(sql)
             self.conn.commit()
-            print('[{}] {:04d} {} ({}) : {} rows > REPLACE INTO daily_price [OK]'.format(datetime.now().strftime('%Y-%m-%d %H:%M'), num+1, company, code, len(df)))
+            print('[{}] {:04d} {} ({}) : {} rows > REPLACE INTO tb_daily_price [OK]'.format(datetime.now().strftime('%Y-%m-%d %H:%M'), num+1, company, code, len(df)))
 
     def update_daily_price(self, pages_to_fetch):
         """KRX 상장법인의 주식 시세를 네이버로부터 읽어서 DB에 업데이트"""
