@@ -11,28 +11,28 @@ import requests
 class DBUpdater:
     def __init__(self):
         """생성자 : MariaDB 연결 및 종목코드 딕셔너리 생성"""
-        self.conn = pymysql.connect(host='localhost', user='root', passwd='3636', db='stock', charset='utf8')
+        self.conn = pymysql.connect(host='192.168.0.5', user='kikicom', passwd='3636', db='stock', charset='utf8')
         with self.conn.cursor() as curs:
             sql = """
-                CREATE TABLE IF NOT EXISTS tb_company_info(
-                    code VARCHAR(20),
-                    company	VARCHAR(40),
-                    last_update DATE,
-                    PRIMARY KEY (code)
+                CREATE TABLE IF NOT EXISTS TB_COMPANY_INFO(
+                    CODE VARCHAR(20),
+                    COMPANY	VARCHAR(40),
+                    LAST_UPDATE DATE,
+                    PRIMARY KEY (CODE)
                 )
             """
             curs.execute(sql)
             sql = """
-                CREATE TABLE IF NOT EXISTS tb_daily_price(
-                    code VARCHAR(20),
-                    date DATE,
-                    open BIGINT(20),
-                    high BIGINT(20),
-                    low BIGINT(20),
-                    close  BIGINT(20),
-                    diff BIGINT(20),
-                    volume BIGINT(20),
-                    PRIMARY KEY (code, date)
+                CREATE TABLE IF NOT EXISTS TB_DAILY_PRICE(
+                    CODE VARCHAR(20),
+                    DATE DATE,
+                    OPEN BIGINT(20),
+                    HIGH BIGINT(20),
+                    LOW BIGINT(20),
+                    CLOSE  BIGINT(20),
+                    DIFF BIGINT(20),
+                    VOLUME BIGINT(20),
+                    PRIMARY KEY (CODE, DATE)
                 )
             """
             curs.execute(sql)
@@ -55,12 +55,12 @@ class DBUpdater:
 
     def update_comp_info(self):
         """종목코드를 COMPANY_INFO 테이블에 업데이트한 후 딕셔너리에 저장"""
-        sql = "SELECT * FROM tb_company_info"
+        sql = "SELECT * FROM TB_COMPANY_INFO"
         df = pd.read_sql(sql, self.conn)
         for idx in range(len(df)):
-            self.codes[df['code'].values[idx]]=df['company'].values[idx]
+            self.codes[df['CODE'].values[idx]]=df['COMPANY'].values[idx]
         with self.conn.cursor() as curs:
-            sql = "SELECT max(last_update) FROM tb_company_info"
+            sql = "SELECT max(LAST_UPDATE) FROM TB_COMPANY_INFO"
             curs.execute(sql)
             rs = curs.fetchone()
             today = datetime.today().strftime('%Y-%m-%d')
@@ -70,7 +70,7 @@ class DBUpdater:
                 for idx in range(len(krx)):
                     code = krx.code.values[idx]
                     company = krx.company.values[idx]
-                    sql = f"REPLACE INTO tb_company_info (code, company, last_update) VALUES ('{code}','{company}','{today}')"
+                    sql = f"REPLACE INTO TB_COMPANY_INFO (CODE, COMPANY, LAST_UPDATE) VALUES ('{code}','{company}','{today}')"
                     curs.execute(sql)
                     self.codes[code] = company
                     tmnow = datetime.now().strftime('%Y-%m-%d')
@@ -123,10 +123,10 @@ class DBUpdater:
         """네이버 금융에서 읽어온 주식 시세를 DB에 REPLACE"""
         with self.conn.cursor() as curs:
             for r in df.itertuples():
-                sql = "REPLACE INTO tb_daily_price VALUES ('{}','{}',{},{},{},{},{},{})".format(code, r.date, r.open, r.high, r.low, r.close, r.diff, r.volume)
+                sql = "REPLACE INTO TB_DAILY_PRICE VALUES ('{}','{}',{},{},{},{},{},{})".format(code, r.date, r.open, r.high, r.low, r.close, r.diff, r.volume)
                 curs.execute(sql)
             self.conn.commit()
-            print('[{}] {:04d} {} ({}) : {} rows > REPLACE INTO tb_daily_price [OK]'.format(datetime.now().strftime('%Y-%m-%d %H:%M'), num+1, company, code, len(df)))
+            print('[{}] {:04d} {} ({}) : {} rows > REPLACE INTO TB_DAILY_PRICE [OK]'.format(datetime.now().strftime('%Y-%m-%d %H:%M'), num+1, company, code, len(df)))
 
     def update_daily_price(self, pages_to_fetch):
         """KRX 상장법인의 주식 시세를 네이버로부터 읽어서 DB에 업데이트"""
