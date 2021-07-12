@@ -16,7 +16,7 @@ class DBUpdater:
             sql = """
                 CREATE TABLE IF NOT EXISTS TB_COMPANY_INFO(
                     CODE VARCHAR(20),
-                    COMPANY	VARCHAR(40),
+                    COMPANY    VARCHAR(40),
                     LAST_UPDATE DATE,
                     PRIMARY KEY (CODE)
                 )
