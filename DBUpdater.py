@@ -10,7 +10,7 @@ import requests
 
 class DBUpdater:
     def __init__(self):
-        """생성자 : MariaDB 연결 및 종목코드 딕셔너리 생성"""
+        """생성자 : MariaDB 연결 및 종목코드 딕셔너리 생성 TEST"""
         self.conn = pymysql.connect(host='192.168.0.5', user='kikicom', passwd='3636', db='stock', charset='utf8')
         with self.conn.cursor() as curs:
             sql = """
